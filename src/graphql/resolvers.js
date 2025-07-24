@@ -2,44 +2,37 @@ import User from '../models/User.js';
 
 const resolvers = {
   Query: {
-    me: async (parent, args, context) => {
-      if (!context.user) {
-        return null;
-      }
-      const userProfile = await User.findOne({ firebaseUid: context.user.uid });
-      return userProfile;
-    },
-    protectedData: (parent, args, context) => {
-      if (!context.user) {
-        throw new Error('You must be logged in to see this.');
-      }
-      return `Welcome, authenticated user ${context.user.email}! This is secret data.`;
-    }
+    me: () => null,
   },
 
   Mutation: {
-    createUser: async (_, { input }, context) => {
-      if (!context.user) {
-        throw new Error('Authentication required! Cannot create user profile.');
-      }
+    createUser: async (_, { input }) => {
+      const { name, phone, email, firebaseUid } = input;
 
-      const { uid, email } = context.user;
-      const { name, phone } = input;
-
-      const existingUser = await User.findOne({ firebaseUid: uid });
+      const existingUser = await User.findOne({ email });
       if (existingUser) {
-        throw new Error('User profile already exists.');
+        throw new Error('User profile already exists with this email.');
       }
 
       const newUser = new User({
-        firebaseUid: uid,
-        email: email,
-        name: name,
-        phone: phone,
+        name,
+        phone,
+        email,
+        firebaseUid,
       });
 
-      const savedUser = await newUser.save();
-      return savedUser;
+      try {
+        const savedUser = await newUser.save();
+        return savedUser;
+      } catch (err) {
+        // Mongoose validation errors: err.errors is an object, not an array!
+        if (err.errors && typeof err.errors === 'object') {
+          const messages = Object.values(err.errors).map(e => e.message);
+          throw new Error(messages.join(', '));
+        }
+        // Other errors
+        throw err;
+      }
     },
   },
 };
